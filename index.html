@@ -1,0 +1,1040 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>بطاقات المفردات</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&family=Amiri:ital,wght@0,400;0,700;1,400&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body, #root { margin: 0; padding: 0; min-height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- localStorage-backed shim so the component's window.storage calls work outside
+       the Claude.ai artifact sandbox, with no changes needed to the component code -->
+  <script>
+    (function () {
+      const PREFIX = "vocab-flashcards:";
+      window.storage = {
+        get: async function (key, shared) {
+          const raw = localStorage.getItem(PREFIX + key);
+          if (raw === null) throw new Error("key not found: " + key);
+          return { key: key, value: raw, shared: !!shared };
+        },
+        set: async function (key, value, shared) {
+          localStorage.setItem(PREFIX + key, value);
+          return { key: key, value: value, shared: !!shared };
+        },
+        delete: async function (key, shared) {
+          localStorage.removeItem(PREFIX + key);
+          return { key: key, deleted: true, shared: !!shared };
+        },
+        list: async function (prefix, shared) {
+          const keys = Object.keys(localStorage)
+            .filter((k) => k.startsWith(PREFIX + (prefix || "")))
+            .map((k) => k.slice(PREFIX.length));
+          return { keys: keys, prefix: prefix, shared: !!shared };
+        },
+      };
+    })();
+  </script>
+
+  <!-- Component source, kept as inert text (not auto-run by Babel's declarative
+       script-tag scanner) so we can control the transform options ourselves -->
+  <script type="text/plain" id="app-source">
+const { useState, useMemo, useRef, useEffect } = React;
+
+const INITIAL_WORDS = [
+  { id: 1, en: "Prudent", ar: "حكيم / متعقّل", example: "It's prudent to save some money each month.", source: "", emoji: "🦉" },
+  { id: 2, en: "Tangible", ar: "ملموس / واضح ويمكن إدراكه", example: "We need tangible proof, not just promises.", source: "", emoji: "🤲" },
+  { id: 3, en: "Concise", ar: "موجز ومختصر", example: "Please keep your answer short and concise.", source: "", emoji: "✂️" },
+  { id: 4, en: "Articulate", ar: "فصيح / قادر على التعبير بوضوح", example: "She is articulate and explains ideas clearly.", source: "", emoji: "🗣️" },
+  { id: 5, en: "Ambiguous", ar: "غامض / يحتمل أكثر من معنى", example: "His answer was vague and ambiguous.", source: "", emoji: "🌫️" },
+  { id: 6, en: "Deter", ar: "يردع", example: "Higher fences deter burglars from breaking in.", source: "", emoji: "🚫" },
+  { id: 7, en: "Sustain", ar: "يحافظ على / يدعم الاستمرار", example: "Good habits sustain your energy all day.", source: "", emoji: "🌱" },
+  { id: 8, en: "Profound", ar: "عميق", example: "The book had a profound effect on me.", source: "", emoji: "🕳️" },
+  { id: 9, en: "Coherent", ar: "مترابط / متماسك", example: "His argument was coherent and easy to follow.", source: "", emoji: "🧩" },
+  { id: 10, en: "Meticulous", ar: "دقيق جدًا / يهتم بالتفاصيل", example: "She is meticulous about checking every detail.", source: "", emoji: "🔍" },
+  { id: 11, en: "Pragmatic", ar: "عملي / واقعي", example: "We need a pragmatic solution, not a perfect one.", source: "", emoji: "🛠️" },
+  { id: 12, en: "Scrutinize", ar: "يفحص أو يدقق بعناية شديدة", example: "Editors scrutinize every sentence before publishing.", source: "", emoji: "🔎" },
+  { id: 13, en: "Inevitable", ar: "حتمي / لا مفر منه", example: "Change is inevitable as technology advances.", source: "", emoji: "⏳" },
+  { id: 14, en: "Adjacent", ar: "مجاور", example: "The parking lot is adjacent to the building.", source: "", emoji: "↔️" },
+  { id: 15, en: "Forthcoming", ar: "قادم / وشيك، وأحيانًا صريح ومتعاون", example: "The results will be forthcoming next week.", source: "", emoji: "📅" },
+  { id: 16, en: "Notwithstanding", ar: "بالرغم من / على الرغم من", example: "Notwithstanding the rain, the game continued.", source: "", emoji: "⚖️" },
+  { id: 17, en: "Convey", ar: "ينقل / يوصل، خصوصًا فكرة أو رسالة", example: "Her letter conveyed deep gratitude.", source: "", emoji: "📨" },
+  { id: 18, en: "Explicit", ar: "صريح / مباشر وواضح", example: "The instructions were explicit and easy to follow.", source: "", emoji: "📢" },
+  { id: 19, en: "Implicit", ar: "ضمني / غير مصرح به مباشرة", example: "There was an implicit agreement between them.", source: "", emoji: "🤫" },
+  { id: 20, en: "Credible", ar: "موثوق / قابل للتصديق", example: "She gave a credible explanation for being late.", source: "", emoji: "✅" },
+  { id: 21, en: "Credential", ar: "مؤهل / اعتماد", example: "He showed his credential to enter the lab.", source: "", emoji: "🎓" },
+  { id: 22, en: "Credibility", ar: "المصداقية", example: "Lying once can destroy your credibility.", source: "", emoji: "🛡️" },
+  { id: 23, en: "Due diligence", ar: "العناية الواجبة / التحقق الدقيق قبل القرار", example: "Investors did due diligence before buying the company.", source: "", emoji: "📋" },
+  { id: 24, en: "Imminent", ar: "وشيك جدًا / على وشك الحدوث", example: "A storm is imminent, so stay indoors.", source: "", emoji: "⏰" },
+  { id: 25, en: "Impartiality", ar: "الحياد / عدم التحيز", example: "Judges must act with impartiality in court.", source: "", emoji: "⚖️" },
+  { id: 26, en: "Detrimental", ar: "ضار / ذو تأثير سلبي", example: "Too much sugar is detrimental to your health.", source: "", emoji: "📉" },
+  { id: 27, en: "Deleterious", ar: "ضار / مؤذٍ", example: "Smoking has deleterious effects on the lungs.", source: "", emoji: "☠️" },
+  { id: 28, en: "Condemnation", ar: "إدانة", example: "The attack drew strong condemnation worldwide.", source: "", emoji: "👎" },
+  { id: 29, en: "Abstinence", ar: "الامتناع", example: "He chose abstinence from alcohol this year.", source: "", emoji: "🚫" },
+  { id: 30, en: "Skepticism", ar: "الشك / التشكك", example: "She viewed the offer with skepticism.", source: "", emoji: "🤨" },
+  { id: 31, en: "Skeptic", ar: "شخص متشكك", example: "He's a skeptic who questions everything.", source: "", emoji: "🤨" },
+  { id: 32, en: "Predicament", ar: "مأزق / موقف صعب", example: "Losing his passport left him in a predicament.", source: "", emoji: "🌀" },
+  { id: 33, en: "Malicious", ar: "خبيث / ذو نية ضارة", example: "The hacker spread a malicious virus.", source: "", emoji: "😈" },
+  { id: 34, en: "Deprivation", ar: "حرمان", example: "Sleep deprivation affects concentration and mood.", source: "", emoji: "🍽️" },
+  { id: 35, en: "Rigorous", ar: "صارم / دقيق ومنهجي", example: "The training program is rigorous and demanding.", source: "", emoji: "📏" },
+  { id: 36, en: "Vigorous", ar: "قوي / نشيط", example: "He gave the floor a vigorous scrub.", source: "", emoji: "💪" },
+  { id: 37, en: "Retaliation", ar: "انتقام / رد انتقامي", example: "The country threatened retaliation after the attack.", source: "", emoji: "🔁" },
+  { id: 38, en: "Impregnable", ar: "منيع / يصعب اختراقه", example: "The castle walls seemed impregnable.", source: "", emoji: "🏰" },
+  { id: 39, en: "Absurd", ar: "سخيف / غير منطقي", example: "It's absurd to expect perfection overnight.", source: "", emoji: "🤡" },
+  { id: 40, en: "Ancillary", ar: "مساعد / ثانوي", example: "The hospital added ancillary services like therapy.", source: "", emoji: "🔧" },
+  { id: 41, en: "Ancillary components", ar: "مكونات مساعدة / ثانوية", example: "The kit includes ancillary components like cables.", source: "", emoji: "🔩" },
+  { id: 42, en: "Annihilate", ar: "يبيد / يدمر بالكامل", example: "The army vowed to annihilate the enemy.", source: "", emoji: "💥" },
+  { id: 43, en: "Seduce", ar: "يغوي / يستميل", example: "Advertisers try to seduce buyers with discounts.", source: "", emoji: "😏" },
+  { id: 44, en: "Extravagant", ar: "مبالغ فيه / مسرف", example: "They threw an extravagant wedding party.", source: "", emoji: "💎" },
+  { id: 45, en: "Debauchery", ar: "فجور / انحلال", example: "The party descended into debauchery by midnight.", source: "", emoji: "🍾" },
+  { id: 46, en: "Reminiscence", ar: "استذكار / ذكريات الماضي", example: "Old photos triggered a wave of reminiscence.", source: "", emoji: "📼" },
+  { id: 47, en: "Extremist", ar: "متطرف", example: "The group condemned the extremist attack.", source: "", emoji: "🚩" },
+  { id: 48, en: "Martyrdom", ar: "استشهاد", example: "He is remembered for his martyrdom.", source: "", emoji: "🕯️" },
+  { id: 49, en: "Allegation", ar: "ادعاء / مزعم", example: "The company denied the allegation of fraud.", source: "", emoji: "❓" },
+  { id: 50, en: "Allegations", ar: "ادعاءات / مزاعم", example: "Police are investigating the allegations.", source: "", emoji: "❓" },
+  { id: 51, en: "Liability", ar: "مسؤولية / التزام، وقد تعني عبئًا", example: "The company faces liability for the damage.", source: "", emoji: "⚠️" },
+  { id: 52, en: "Caveat", ar: "تحذير / تحفظ / شرط يجب الانتباه إليه", example: "I'll help, but with one caveat.", source: "", emoji: "📌" },
+  { id: 53, en: "Caveats", ar: "محاذير / تحفظات", example: "The contract came with several caveats.", source: "", emoji: "📌" },
+  { id: 54, en: "Convergence", ar: "تقارب / التقاء", example: "The convergence of ideas sparked innovation.", source: "", emoji: "🔀" },
+  { id: 55, en: "Refurbishment", ar: "تجديد / إعادة تأهيل", example: "The old theatre closed for refurbishment.", source: "", emoji: "🛠️" },
+  { id: 56, en: "Insurrection", ar: "تمرد / عصيان", example: "The insurrection was quickly put down.", source: "", emoji: "✊" },
+  { id: 57, en: "Inclusion", ar: "شمول / إدماج", example: "The school promotes inclusion for all students.", source: "", emoji: "🤝" },
+  { id: 58, en: "Uncanny", ar: "غريب بشكل غير مألوف أو مقلق", example: "She has an uncanny ability to guess right.", source: "", emoji: "👻" },
+  { id: 59, en: "Vernacular", ar: "اللغة الدارجة / العامية", example: "He wrote the poem in local vernacular.", source: "", emoji: "💬" },
+  { id: 60, en: "Nostalgia", ar: "الحنين إلى الماضي", example: "The old song filled her with nostalgia.", source: "", emoji: "📻" },
+  { id: 61, en: "Procrastination", ar: "التسويف / المماطلة", example: "Procrastination made him miss the deadline.", source: "", emoji: "🛌" },
+  { id: 62, en: "Demeaning", ar: "مهين / يحط من قدر شخص", example: "The comment felt demeaning to the staff.", source: "", emoji: "😞" },
+  { id: 63, en: "Interrogation", ar: "استجواب", example: "The suspect faced hours of interrogation.", source: "", emoji: "🚨" },
+  { id: 64, en: "Autocratic", ar: "استبدادي", example: "The manager's autocratic style upset the team.", source: "", emoji: "👑" },
+  { id: 65, en: "Assassination", ar: "اغتيال", example: "The assassination shocked the entire nation.", source: "", emoji: "🎯" },
+  { id: 66, en: "Masculinity", ar: "الرجولة / الذكورة", example: "The film explores ideas of masculinity.", source: "", emoji: "🚹" },
+  { id: 67, en: "Artifact", ar: "قطعة أثرية / شيء من صنع الإنسان", example: "The museum displayed an ancient artifact.", source: "", emoji: "🏺" },
+  { id: 68, en: "Civilization", ar: "حضارة", example: "Rivers helped early civilization flourish.", source: "", emoji: "🏛️" },
+  { id: 69, en: "Impotence", ar: "عجز / ضعف القدرة", example: "He felt a sense of impotence facing the storm.", source: "", emoji: "🚷" },
+  { id: 70, en: "Pediatrician", ar: "طبيب أطفال", example: "The pediatrician checked the baby's height.", source: "", emoji: "🧒" },
+  { id: 71, en: "Dementia", ar: "الخرف", example: "Her grandmother was diagnosed with dementia.", source: "", emoji: "🧠" },
+  { id: 72, en: "Antagonist", ar: "خصم / مناوئ", example: "The film's antagonist is a corrupt mayor.", source: "", emoji: "🥊" },
+  { id: 73, en: "Fidgeting", ar: "التململ / الحركة العصبية", example: "The child kept fidgeting during the lecture.", source: "", emoji: "😬" },
+  { id: 74, en: "Curtail", ar: "يقلص / يحد من", example: "The budget cuts will curtail spending.", source: "", emoji: "✂️" },
+  { id: 75, en: "Antidote", ar: "ترياق / علاج مضاد", example: "Doctors gave him the antidote in time.", source: "", emoji: "🧪" },
+  { id: 76, en: "Excavation", ar: "حفر / تنقيب", example: "The excavation revealed ancient pottery.", source: "", emoji: "⛏️" },
+  { id: 77, en: "Fragrant", ar: "عطِر / ذو رائحة جميلة", example: "The garden was fragrant with roses.", source: "", emoji: "🌸" },
+  { id: 78, en: "Monument", ar: "نصب تذكاري / معلم", example: "Tourists gathered around the famous monument.", source: "", emoji: "🗽" },
+  { id: 79, en: "Statue", ar: "تمثال", example: "A bronze statue stands in the square.", source: "", emoji: "🗿" },
+  { id: 80, en: "Inscribed", ar: "منقوش / مكتوب عليه", example: "Her name was inscribed on the trophy.", source: "", emoji: "🪵" },
+  { id: 81, en: "Persistent", ar: "مثابر / مستمر", example: "Her persistent effort finally paid off.", source: "", emoji: "🔁" },
+  { id: 82, en: "Energy drain", ar: "استنزاف للطاقة", example: "Late-night scrolling is a real energy drain.", source: "", emoji: "🔋" },
+  { id: 83, en: "Relish", ar: "يستمتع بشيء كثيرًا", example: "He seemed to relish the challenge.", source: "", emoji: "😋" },
+  { id: 84, en: "Relishing", ar: "مستمتع بـ", example: "She was relishing every bite of the meal.", source: "", emoji: "😋" },
+  { id: 85, en: "Meddling", ar: "تدخل فيما لا يعنيك / تطفل", example: "Stop meddling in other people's business.", source: "", emoji: "🕵️" },
+  { id: 86, en: "Ruthless", ar: "عديم الرحمة", example: "The general was known as ruthless in battle.", source: "", emoji: "🗡️" },
+  { id: 87, en: "Trembling", ar: "ارتجاف", example: "Her hands were trembling with fear.", source: "", emoji: "🥶" },
+  { id: 88, en: "Trembling sensation", ar: "إحساس بالارتجاف", example: "He felt a trembling sensation before the exam.", source: "", emoji: "🥶" },
+  { id: 89, en: "Wounded", ar: "مجروح", example: "The soldier was wounded in the leg.", source: "", emoji: "🩹" },
+  { id: 90, en: "Wounded heart", ar: "قلب مجروح", example: "Time slowly healed her wounded heart.", source: "", emoji: "💔" },
+  { id: 91, en: "Stalled", ar: "متوقف / متعطل", example: "Talks between the two sides stalled again.", source: "", emoji: "🛑" },
+  { id: 92, en: "Bankruptcy", ar: "إفلاس", example: "The company filed for bankruptcy last year.", source: "", emoji: "📉" },
+  { id: 93, en: "Liaison", ar: "اتصال / تنسيق / حلقة وصل", example: "She works as a liaison between departments.", source: "", emoji: "🔗" },
+  { id: 94, en: "Barricade", ar: "حاجز", example: "Police set up a barricade on the street.", source: "", emoji: "🚧" },
+  { id: 95, en: "Barricades", ar: "حواجز", example: "Protesters built barricades outside the building.", source: "", emoji: "🚧" },
+  { id: 96, en: "Aerial", ar: "جوي", example: "The drone captured stunning aerial footage.", source: "", emoji: "✈️" },
+  { id: 97, en: "Aerial attack", ar: "هجوم جوي", example: "The city braced for another aerial attack.", source: "", emoji: "💣" },
+  { id: 98, en: "Hostile", ar: "عدائي", example: "The crowd grew hostile after the decision.", source: "", emoji: "😠" },
+  { id: 99, en: "Recite", ar: "يتلو / يردد من الذاكرة", example: "Students had to recite the poem by heart.", source: "", emoji: "📖" },
+  { id: 100, en: "Fluke", ar: "ضربة حظ / حدث عرضي غير متوقع", example: "Winning twice in a row wasn't a fluke.", source: "", emoji: "🍀" },
+  { id: 101, en: "Confrontation", ar: "مواجهة", example: "The meeting ended in a heated confrontation.", source: "", emoji: "🥊" },
+  { id: 102, en: "Seizure", ar: "نوبة / استيلاء، حسب السياق", example: "He collapsed after suffering a seizure.", source: "", emoji: "⚡" },
+  { id: 103, en: "Heart attack", ar: "نوبة قلبية", example: "Her father survived a heart attack last year.", source: "", emoji: "❤️‍🩹" },
+  { id: 104, en: "First sight", ar: "النظرة الأولى", example: "It was love at first sight.", source: "", emoji: "👀" },
+  { id: 105, en: "Prognosis", ar: "توقّع مسار المرض / مآل الحالة", example: "The doctor gave a hopeful prognosis.", source: "", emoji: "🩺" },
+  { id: 106, en: "Bleak prognosis", ar: "توقع قاتم لمسار الحالة", example: "The bleak prognosis worried the whole family.", source: "", emoji: "🌧️" },
+  { id: 107, en: "Snatched", ar: "خُطف / انتُزع بسرعة", example: "A thief snatched her bag and ran.", source: "", emoji: "✋" },
+  { id: 108, en: "Gladiator", ar: "مصارع", example: "The gladiator fought bravely in the arena.", source: "", emoji: "⚔️" },
+  { id: 109, en: "Nurture", ar: "يرعى / ينمّي", example: "Good teachers nurture curiosity in children.", source: "", emoji: "🌿" },
+  { id: 110, en: "Sepia", ar: "بني مائل للصفرة", example: "The old photo had a sepia tone.", source: "", emoji: "🎞️" },
+  { id: 111, en: "Buffer zone", ar: "منطقة عازلة", example: "Troops withdrew from the buffer zone.", source: "", emoji: "🚧" },
+  { id: 112, en: "Aqueous solution", ar: "محلول مائي", example: "Salt dissolves easily in an aqueous solution.", source: "", emoji: "🧪" },
+  { id: 113, en: "Obstetrician", ar: "طبيب توليد", example: "The obstetrician monitored the pregnancy closely.", source: "", emoji: "🤰" },
+  { id: 114, en: "Ovulation", ar: "الإباضة", example: "Ovulation usually occurs mid-cycle.", source: "", emoji: "🥚" },
+  { id: 115, en: "Circumcise", ar: "يختن", example: "The doctor explained when to circumcise the infant.", source: "", emoji: "🩹" },
+  { id: 116, en: "Contestant", ar: "متسابق", example: "Each contestant answered three questions.", source: "", emoji: "🏅" },
+  { id: 117, en: "Applause", ar: "تصفيق", example: "The audience burst into applause.", source: "", emoji: "👏" },
+  { id: 118, en: "Soft erection", ar: "انتصاب غير كامل", example: "Stress can sometimes cause a soft erection.", source: "", emoji: "😳" },
+  { id: 119, en: "Giraffe", ar: "زرافة", example: "The giraffe stretched its long neck for leaves.", source: "", emoji: "🦒" },
+  { id: 120, en: "Apricot", ar: "مشمش", example: "She added dried apricot to the salad.", source: "", emoji: "🍑" },
+  { id: 121, en: "Proxy", ar: "وكيل / بديل / ممثل عن طرف آخر", example: "He voted by proxy while abroad.", source: "", emoji: "🧑‍💼" },
+  { id: 122, en: "Felony", ar: "جناية", example: "Theft of that scale is a felony.", source: "", emoji: "🚔" },
+  { id: 123, en: "Ostrich", ar: "نعامة", example: "The ostrich sprinted across the open plain.", source: "", emoji: "🦤" },
+  { id: 124, en: "Mortgage", ar: "رهن عقاري", example: "They took out a mortgage to buy the house.", source: "", emoji: "🏠" },
+  { id: 125, en: "Mortgages", ar: "رهون عقارية", example: "Interest rates on mortgages rose this year.", source: "", emoji: "🏠" },
+  { id: 126, en: "Adverse", ar: "سلبي / معاكس / ضار", example: "The drug can cause adverse side effects.", source: "", emoji: "📉" },
+  { id: 127, en: "Antelope", ar: "ظبي", example: "The antelope grazed near the river.", source: "", emoji: "🦌" },
+  { id: 128, en: "Ballot", ar: "ورقة اقتراع / تصويت", example: "She cast her ballot early this morning.", source: "", emoji: "🗳️" },
+  { id: 129, en: "Retrospect", ar: "نظرة إلى الماضي / استرجاع", example: "In retrospect, the plan was flawed.", source: "", emoji: "🔙" },
+  { id: 130, en: "In retrospect", ar: "عند النظر إلى الأمر بأثر رجعي", example: "In retrospect, we should have left earlier.", source: "", emoji: "🔙" },
+  { id: 131, en: "Procreate", ar: "يتكاثر / ينجب", example: "Many animals migrate each year to procreate.", source: "", emoji: "👶" },
+  { id: 132, en: "Boredom", ar: "ملل", example: "Boredom set in after the third hour.", source: "", emoji: "😴" },
+  { id: 133, en: "Scrutiny", ar: "تدقيق / فحص دقيق", example: "The deal came under public scrutiny.", source: "", emoji: "🔬" },
+  { id: 134, en: "Rodent", ar: "قارض", example: "A small rodent scurried across the floor.", source: "", emoji: "🐀" },
+  { id: 135, en: "Viable", ar: "قابل للتطبيق / قابل للاستمرار", example: "The plan is viable if costs stay low.", source: "", emoji: "🌱" },
+  { id: 136, en: "Impactful", ar: "مؤثر / ذو تأثير قوي", example: "Her speech was short but impactful.", source: "", emoji: "💥" },
+  { id: 137, en: "Abundant", ar: "وفير / كثير", example: "Fresh fruit was abundant at the market.", source: "", emoji: "🌾" },
+  { id: 138, en: "Scarce", ar: "نادر / شحيح", example: "Clean water is scarce in that region.", source: "", emoji: "🪫" },
+  { id: 139, en: "Hinder", ar: "يعيق / يعرقل", example: "Heavy traffic can hinder emergency response.", source: "", emoji: "🚧" },
+  { id: 140, en: "Discourage", ar: "يثبط / يثني شخصًا عن فعل شيء", example: "Don't let one failure discourage you.", source: "", emoji: "👎" },
+  { id: 141, en: "Unavoidable", ar: "لا يمكن تجنبه", example: "Some delays were simply unavoidable.", source: "", emoji: "⏳" },
+  { id: 142, en: "Precise", ar: "دقيق / محدد", example: "Give me the precise time of the meeting.", source: "", emoji: "🎯" },
+  { id: 143, en: "Contradiction", ar: "تناقض", example: "His story was full of contradiction.", source: "", emoji: "🔄" },
+  { id: 144, en: "Contradictory", ar: "متناقض", example: "The two reports gave contradictory numbers.", source: "", emoji: "🔄" },
+  { id: 145, en: "Controversial", ar: "مثير للجدل", example: "The new law proved highly controversial.", source: "", emoji: "🔥" },
+  { id: 146, en: "Consensus", ar: "إجماع / اتفاق عام", example: "The team reached consensus after long debate.", source: "", emoji: "🤝" },
+  { id: 147, en: "Compassion", ar: "تعاطف / رحمة", example: "She treated every patient with compassion.", source: "", emoji: "💗" },
+  { id: 148, en: "Compassionate", ar: "عطوف / رحيم", example: "He is a kind, compassionate doctor.", source: "", emoji: "💗" },
+  { id: 149, en: "Contemplate", ar: "يتأمل / يفكر بعمق", example: "She paused to contemplate her next move.", source: "", emoji: "🤔" },
+  { id: 150, en: "Perception", ar: "إدراك / تصور", example: "Public perception of the brand improved.", source: "", emoji: "👁️" },
+  { id: 151, en: "Perceive", ar: "يدرك / يرى أو يفهم", example: "Children perceive the world differently than adults.", source: "", emoji: "👁️" },
+  { id: 152, en: "Perspective", ar: "منظور / وجهة نظر", example: "Travel gave him a broader perspective.", source: "", emoji: "🔭" },
+  { id: 153, en: "Presume", ar: "يفترض", example: "I presume you've read the report already.", source: "", emoji: "🤷" },
+  { id: 154, en: "Presumably", ar: "على الأرجح / من المفترض", example: "Presumably, the flight will be delayed again.", source: "", emoji: "🤷" },
+  { id: 155, en: "Plausible", ar: "معقول / قابل للتصديق", example: "His excuse sounded plausible at first.", source: "", emoji: "🤞" },
+  { id: 156, en: "Feasible", ar: "ممكن عمليًا / قابل للتنفيذ", example: "Is it feasible to finish by Friday?", source: "", emoji: "🛠️" },
+  { id: 157, en: "Reluctant", ar: "متردد / غير راغب", example: "She was reluctant to share her opinion.", source: "", emoji: "🙅" },
+  { id: 158, en: "Reluctance", ar: "تردد / عدم رغبة", example: "He agreed, but with obvious reluctance.", source: "", emoji: "🙅" },
+  { id: 159, en: "Resilient", ar: "مرن وقادر على التعافي", example: "Children are often remarkably resilient.", source: "", emoji: "🌳" },
+  { id: 160, en: "Resilience", ar: "المرونة / القدرة على التعافي", example: "The town rebuilt with impressive resilience.", source: "", emoji: "🌳" },
+  { id: 161, en: "Vulnerable", ar: "عرضة للخطر / ضعيف أمام شيء", example: "The elderly are more vulnerable to the virus.", source: "", emoji: "🛡️" },
+  { id: 162, en: "Vulnerability", ar: "قابلية التأثر / نقطة ضعف", example: "The hacker exploited a system vulnerability.", source: "", emoji: "🛡️" },
+  { id: 163, en: "Inherent", ar: "متأصل / ملازم بطبيعته", example: "Risk is inherent in any investment.", source: "", emoji: "🧬" },
+  { id: 164, en: "Intrinsic", ar: "جوهري / داخلي بطبيعته", example: "The painting has intrinsic artistic value.", source: "", emoji: "🧬" },
+  { id: 165, en: "Extrinsic", ar: "خارجي / ناتج عن عوامل خارجية", example: "Bonuses are an extrinsic motivator at work.", source: "", emoji: "🌐" },
+  { id: 166, en: "Prevalent", ar: "شائع / منتشر", example: "Smartphones are now prevalent worldwide.", source: "", emoji: "📊" },
+  { id: 167, en: "Predominant", ar: "سائد / غالب", example: "English is the predominant language here.", source: "", emoji: "📊" },
+  { id: 168, en: "Substantial", ar: "كبير / جوهري / ملحوظ", example: "They made substantial progress this quarter.", source: "", emoji: "🏋️" },
+  { id: 169, en: "Negligible", ar: "ضئيل جدًا / يمكن إهماله", example: "The price difference is negligible.", source: "", emoji: "🪶" },
+  { id: 170, en: "Significant", ar: "مهم / ملحوظ", example: "There was a significant drop in sales.", source: "", emoji: "❗" },
+  { id: 171, en: "Comprehensive", ar: "شامل", example: "The report offers a comprehensive overview.", source: "", emoji: "📚" },
+  { id: 172, en: "Compelling", ar: "مقنع جدًا / قوي", example: "She made a compelling case for change.", source: "", emoji: "🧲" },
+  { id: 173, en: "Elaborate", ar: "يفصّل / معقد ومفصل حسب السياق", example: "He designed an elaborate escape plan.", source: "", emoji: "🧵" },
+  { id: 174, en: "Elaborate on", ar: "يتوسع في شرح شيء", example: "Could you elaborate on that point?", source: "", emoji: "🧵" },
+  { id: 175, en: "Infer", ar: "يستنتج", example: "We can infer his mood from his tone.", source: "", emoji: "🕵️" },
+  { id: 176, en: "Inference", ar: "استنتاج", example: "That's a reasonable inference from the data.", source: "", emoji: "🕵️" },
+  { id: 177, en: "Deduce", ar: "يستنبط / يستنتج منطقيًا", example: "Detectives deduce facts from small clues.", source: "", emoji: "🧠" },
+  { id: 178, en: "Assess", ar: "يقيّم", example: "Doctors assess the patient's condition first.", source: "", emoji: "📝" },
+  { id: 179, en: "Evaluate", ar: "يقيّم", example: "Teachers evaluate students at the end of term.", source: "", emoji: "📝" },
+  { id: 180, en: "Validate", ar: "يتحقق من صحة شيء", example: "The receipt will validate your purchase.", source: "", emoji: "✔️" },
+  { id: 181, en: "Verification", ar: "التحقق", example: "The bank requires identity verification.", source: "", emoji: "✔️" },
+  { id: 182, en: "Corroborate", ar: "يؤكد أو يدعم بدليل إضافي", example: "Witnesses corroborate her version of events.", source: "", emoji: "🤝" },
+  { id: 183, en: "Discrepancy", ar: "اختلاف / عدم تطابق", example: "There's a discrepancy between the two reports.", source: "", emoji: "⚖️" },
+  { id: 184, en: "Disparity", ar: "تفاوت", example: "The report highlights income disparity.", source: "", emoji: "⚖️" },
+  { id: 185, en: "Deteriorate", ar: "يتدهور", example: "His health began to deteriorate quickly.", source: "", emoji: "📉" },
+  { id: 186, en: "Deterioration", ar: "تدهور", example: "The bridge shows signs of deterioration.", source: "", emoji: "📉" },
+  { id: 187, en: "Mitigate", ar: "يخفف / يقلل من شدة شيء", example: "New rules aim to mitigate the risk.", source: "", emoji: "🩹" },
+  { id: 188, en: "Mitigation", ar: "تخفيف / تقليل الأثر", example: "Flood mitigation projects began this spring.", source: "", emoji: "🩹" },
+  { id: 189, en: "Exacerbate", ar: "يفاقم / يزيد المشكلة سوءًا", example: "Stress can exacerbate the illness.", source: "", emoji: "🔥" },
+  { id: 190, en: "Alleviate", ar: "يخفف", example: "The medicine helped alleviate the pain.", source: "", emoji: "🩹" },
+  { id: 191, en: "Facilitate", ar: "يسهّل", example: "The app helps facilitate faster payments.", source: "", emoji: "🚪" },
+  { id: 192, en: "Facilitation", ar: "تسهيل", example: "Good facilitation kept the meeting on track.", source: "", emoji: "🚪" },
+  { id: 193, en: "Impede", ar: "يعيق", example: "Fallen trees impede the road ahead.", source: "", emoji: "🚧" },
+  { id: 194, en: "Constraint", ar: "قيد / عامل مقيّد", example: "Budget is our biggest constraint right now.", source: "", emoji: "⛓️" },
+  { id: 195, en: "Constraints", ar: "قيود", example: "The design must work within tight constraints.", source: "", emoji: "⛓️" },
+  { id: 196, en: "Limitation", ar: "محدودية / قيد", example: "Battery life is the phone's main limitation.", source: "", emoji: "🚫" },
+  { id: 197, en: "Threshold", ar: "عتبة / حد يبدأ عنده تأثير", example: "Sales crossed the million-dollar threshold.", source: "", emoji: "🚪" },
+  { id: 198, en: "Subsequent", ar: "لاحق / تالٍ", example: "Subsequent tests confirmed the diagnosis.", source: "", emoji: "➡️" },
+  { id: 199, en: "Prior", ar: "سابق / قبل", example: "He had no prior experience in sales.", source: "", emoji: "⬅️" },
+  { id: 200, en: "Concurrent", ar: "متزامن", example: "She is serving two concurrent sentences.", source: "", emoji: "🔀" },
+  { id: 201, en: "Simultaneously", ar: "في الوقت نفسه", example: "The two events happened simultaneously.", source: "", emoji: "🔀" },
+  { id: 202, en: "Consecutive", ar: "متتالٍ", example: "They won five consecutive matches.", source: "", emoji: "🔢" },
+  { id: 203, en: "Intermittent", ar: "متقطع", example: "The Wi-Fi connection was intermittent all day.", source: "", emoji: "〰️" },
+  { id: 204, en: "Spontaneous", ar: "عفوي / تلقائي", example: "They took a spontaneous trip to the coast.", source: "", emoji: "🎲" },
+  { id: 205, en: "Arbitrary", ar: "اعتباطي / دون أساس واضح", example: "The rule felt arbitrary and unfair.", source: "", emoji: "🎲" },
+  { id: 206, en: "Deliberate", ar: "متعمد / مدروس", example: "It was a deliberate, well-planned move.", source: "", emoji: "🎯" },
+  { id: 207, en: "Deliberately", ar: "عن عمد", example: "He deliberately left the door unlocked.", source: "", emoji: "🎯" },
+  { id: 208, en: "Intact", ar: "سليم / غير متضرر", example: "The package arrived intact despite the fall.", source: "", emoji: "📦" },
+  { id: 209, en: "Compromised", ar: "متضرر / ضعفت سلامته", example: "Her immune system was compromised by illness.", source: "", emoji: "🔓" },
+  { id: 210, en: "Susceptible", ar: "قابل للتأثر / عرضة لـ", example: "Young children are more susceptible to colds.", source: "", emoji: "🦠" },
+  { id: 211, en: "Susceptibility", ar: "قابلية التأثر", example: "Genetics affect susceptibility to certain diseases.", source: "", emoji: "🦠" },
+  { id: 212, en: "Robust", ar: "قوي / متين / موثوق", example: "The bridge has a robust design.", source: "", emoji: "🏋️" },
+  { id: 213, en: "Robustness", ar: "المتانة / قوة الاعتمادية", example: "Engineers tested the robustness of the frame.", source: "", emoji: "🏋️" },
+  { id: 214, en: "Subtle", ar: "دقيق / خفي وغير واضح بسهولة", example: "There was a subtle change in his tone.", source: "", emoji: "🕊️" },
+  { id: 215, en: "Apparent", ar: "ظاهر / واضح ظاهريًا", example: "It became apparent that the plan failed.", source: "", emoji: "👁️" },
+  { id: 216, en: "Evident", ar: "واضح / جلي", example: "Her talent was evident from a young age.", source: "", emoji: "👁️" },
+  { id: 217, en: "Conceal", ar: "يخفي", example: "He tried to conceal his disappointment.", source: "", emoji: "🙈" },
+  { id: 218, en: "Reveal", ar: "يكشف", example: "The results will reveal the true cause.", source: "", emoji: "🙉" },
+  { id: 219, en: "Disclose", ar: "يفصح / يكشف معلومات", example: "Companies must disclose major financial risks.", source: "", emoji: "📢" },
+  { id: 220, en: "Disclosure", ar: "إفصاح", example: "Full disclosure builds trust with clients.", source: "", emoji: "📢" },
+  { id: 221, en: "Allegedly", ar: "حسب الادعاء / يُزعم أن", example: "He was allegedly seen leaving the scene.", source: "", emoji: "❓" },
+  { id: 222, en: "Apparently", ar: "على ما يبدو", example: "Apparently, the meeting was moved to noon.", source: "", emoji: "👁️" },
+  { id: 223, en: "Inevitably", ar: "حتمًا", example: "Prices will inevitably rise next year.", source: "", emoji: "⏳" },
+  { id: 224, en: "Predominantly", ar: "في الغالب", example: "The crowd was predominantly young students.", source: "", emoji: "📊" },
+  { id: 225, en: "Relatively", ar: "نسبيًا", example: "The exam was relatively easy this time.", source: "", emoji: "⚖️" },
+  { id: 226, en: "Conversely", ar: "وعلى العكس", example: "Conversely, demand fell as prices rose.", source: "", emoji: "🔄" },
+  { id: 227, en: "Nonetheless", ar: "مع ذلك", example: "It rained; nonetheless, the show went on.", source: "", emoji: "➰" },
+  { id: 228, en: "Nevertheless", ar: "ومع ذلك / بالرغم من ذلك", example: "He was tired; nevertheless, he kept working.", source: "", emoji: "➰" },
+  { id: 229, en: "Whereas", ar: "بينما / في حين أن", example: "She likes tea, whereas he prefers coffee.", source: "", emoji: "↔️" },
+  { id: 230, en: "Hence", ar: "ومن ثم / لذلك", example: "The bridge is closed; hence the detour.", source: "", emoji: "➡️" },
+  { id: 231, en: "Thereby", ar: "وبذلك / عن طريق ذلك", example: "He cut costs, thereby raising profits.", source: "", emoji: "➡️" },
+  { id: 232, en: "Accordingly", ar: "وبناءً على ذلك", example: "Rules changed, and we acted accordingly.", source: "", emoji: "➡️" },
+  { id: 233, en: "Moreover", ar: "علاوة على ذلك", example: "The plan is costly; moreover, it's risky.", source: "", emoji: "➕" },
+  { id: 234, en: "Furthermore", ar: "بالإضافة إلى ذلك", example: "Furthermore, the report lacks solid evidence.", source: "", emoji: "➕" },
+  { id: 235, en: "Conversely", ar: "بالمقابل / على العكس", example: "Conversely, demand fell as prices rose.", source: "", emoji: "🔄" },
+  { id: 236, en: "Arguably", ar: "يمكن القول إن", example: "This is arguably her best performance yet.", source: "", emoji: "💬" },
+  { id: 237, en: "Ostensibly", ar: "ظاهريًا / كما يبدو", example: "He left, ostensibly to catch a train.", source: "", emoji: "🎭" },
+  { id: 238, en: "Ultimately", ar: "في نهاية المطاف", example: "Ultimately, the choice is up to you.", source: "", emoji: "🏁" },
+  { id: 239, en: "Predicament", ar: "مأزق", example: "Losing his passport left him in a predicament.", source: "", emoji: "🌀" },
+  { id: 240, en: "Repercussion", ar: "تداعيات / عواقب، غالبًا سلبية", example: "Every decision carries some repercussion.", source: "", emoji: "💥" },
+  { id: 241, en: "Ramification", ar: "تداعيات / نتائج مترتبة", example: "The policy has serious economic ramification.", source: "", emoji: "🌳" },
+  { id: 242, en: "Aftermath", ar: "أعقاب / النتائج التي تلي حدثًا سيئًا", example: "The town rebuilt in the storm's aftermath.", source: "", emoji: "🌪️" },
+  { id: 243, en: "Outrage", ar: "غضب شديد / استنكار", example: "The decision sparked public outrage.", source: "", emoji: "😡" },
+  { id: 244, en: "Outrageous", ar: "شائن / صادم بشكل غير مقبول", example: "The price increase seemed outrageous.", source: "", emoji: "😡" },
+  { id: 245, en: "Atrocity", ar: "فظاعة / عمل وحشي", example: "The war crime was a horrific atrocity.", source: "", emoji: "💔" },
+  { id: 246, en: "Brutality", ar: "وحشية", example: "The footage showed shocking police brutality.", source: "", emoji: "🥊" },
+  { id: 247, en: "Hostility", ar: "عدائية", example: "Tension turned into open hostility.", source: "", emoji: "😠" },
+  { id: 248, en: "Hostile environment", ar: "بيئة عدائية", example: "Workers reported a hostile environment at the office.", source: "", emoji: "⚡" },
+  { id: 249, en: "Unrest", ar: "اضطرابات", example: "The election result triggered civil unrest.", source: "", emoji: "🔥" },
+  { id: 250, en: "Uprising", ar: "انتفاضة", example: "The uprising began after years of unrest.", source: "", emoji: "✊" },
+  { id: 251, en: "Coup", ar: "انقلاب", example: "The military staged a coup overnight.", source: "", emoji: "🏛️" },
+  { id: 252, en: "Regime", ar: "نظام حاكم", example: "The new regime promised sweeping reforms.", source: "", emoji: "🏛️" },
+  { id: 253, en: "Sovereignty", ar: "سيادة", example: "The nation defended its territorial sovereignty.", source: "", emoji: "👑" },
+  { id: 254, en: "Sanction", ar: "عقوبة / جزاء، وقد تعني موافقة حسب السياق", example: "The UN voted to sanction the regime.", source: "", emoji: "🚫" },
+  { id: 255, en: "Sanctions", ar: "عقوبات", example: "New sanctions target the country's oil exports.", source: "", emoji: "🚫" },
+  { id: 256, en: "Coalition", ar: "تحالف", example: "A coalition of parties formed the government.", source: "", emoji: "🤝" },
+  { id: 257, en: "Alliance", ar: "تحالف", example: "The two nations formed a defense alliance.", source: "", emoji: "🤝" },
+  { id: 258, en: "Treaty", ar: "معاهدة", example: "Both countries signed the peace treaty.", source: "", emoji: "📜" },
+  { id: 259, en: "Truce", ar: "هدنة", example: "The two sides agreed to a truce.", source: "", emoji: "🕊️" },
+  { id: 260, en: "Ceasefire", ar: "وقف إطلاق النار", example: "The ceasefire held for less than a week.", source: "", emoji: "🕊️" },
+  { id: 261, en: "Deterrence", ar: "ردع", example: "Strong defense serves as deterrence.", source: "", emoji: "🛡️" },
+  { id: 262, en: "Intervention", ar: "تدخل", example: "Foreign intervention ended the conflict.", source: "", emoji: "✋" },
+  { id: 263, en: "Sovereign", ar: "ذو سيادة / سيادي", example: "Each sovereign state sets its own laws.", source: "", emoji: "👑" },
+  { id: 264, en: "Diplomacy", ar: "دبلوماسية", example: "Diplomacy prevented the conflict from escalating.", source: "", emoji: "🤝" },
+  { id: 265, en: "Diplomatic", ar: "دبلوماسي", example: "She gave a calm, diplomatic response.", source: "", emoji: "🤝" },
+  { id: 266, en: "Negotiation", ar: "تفاوض", example: "The negotiation lasted well into the night.", source: "", emoji: "🤝" },
+  { id: 267, en: "Mediation", ar: "وساطة", example: "A neutral mediator led the mediation.", source: "", emoji: "🤝" },
+  { id: 268, en: "Reconciliation", ar: "مصالحة", example: "The two families began a slow reconciliation.", source: "", emoji: "🕊️" },
+  { id: 269, en: "Escalation", ar: "تصعيد", example: "Officials fear a further escalation of violence.", source: "", emoji: "📈" },
+  { id: 270, en: "De-escalation", ar: "خفض التصعيد", example: "Talks focused on de-escalation of the crisis.", source: "", emoji: "📉" },
+  { id: 271, en: "Deployment", ar: "نشر / انتشار، خصوصًا القوات أو المعدات", example: "The deployment of troops began at dawn.", source: "", emoji: "🪖" },
+  { id: 272, en: "Surveillance", ar: "مراقبة", example: "The building is under constant surveillance.", source: "", emoji: "📹" },
+  { id: 273, en: "Evacuation", ar: "إجلاء", example: "Officials ordered an immediate evacuation.", source: "", emoji: "🚨" },
+  { id: 274, en: "Casualties", ar: "ضحايا / قتلى وجرحى", example: "The storm caused several casualties.", source: "", emoji: "🕯️" },
+  { id: 275, en: "Civilian", ar: "مدني", example: "No civilian was harmed in the raid.", source: "", emoji: "🧑‍🤝‍🧑" },
+  { id: 276, en: "Captive", ar: "أسير / محتجز", example: "The soldier was held captive for months.", source: "", emoji: "⛓️" },
+  { id: 277, en: "Detention", ar: "احتجاز", example: "He was released after weeks in detention.", source: "", emoji: "🔒" },
+  { id: 278, en: "Detained", ar: "محتجز", example: "Protesters were detained by police overnight.", source: "", emoji: "🔒" },
+  { id: 279, en: "Displacement", ar: "نزوح / تهجير", example: "The flood caused mass displacement of families.", source: "", emoji: "🎒" },
+  { id: 280, en: "Refugee", ar: "لاجئ", example: "The refugee family found shelter nearby.", source: "", emoji: "🏕️" },
+  { id: 281, en: "Humanitarian", ar: "إنساني", example: "The crisis sparked a humanitarian response.", source: "", emoji: "🤲" },
+  { id: 282, en: "Aid", ar: "مساعدات", example: "Foreign aid arrived within days.", source: "", emoji: "🎁" },
+  { id: 283, en: "Humanitarian aid", ar: "مساعدات إنسانية", example: "Humanitarian aid reached the region by truck.", source: "", emoji: "🎁" },
+  { id: 284, en: "Famine", ar: "مجاعة", example: "Drought led to widespread famine.", source: "", emoji: "🍽️" },
+  { id: 285, en: "Scarcity", ar: "ندرة / شح", example: "Water scarcity worsened during the summer.", source: "", emoji: "🪫" },
+  { id: 286, en: "Shortage", ar: "نقص", example: "A shortage of supplies delayed the project.", source: "", emoji: "📉" },
+  { id: 287, en: "Outbreak", ar: "تفشٍ / اندلاع", example: "Health officials tracked the disease outbreak.", source: "", emoji: "🦠" },
+  { id: 288, en: "Contamination", ar: "تلوث", example: "Tests confirmed contamination of the water supply.", source: "", emoji: "☣️" },
+  { id: 289, en: "Contaminated", ar: "ملوث", example: "The river was contaminated by chemical waste.", source: "", emoji: "☣️" },
+  { id: 290, en: "Hazard", ar: "خطر / مصدر خطر", example: "Wet floors are a slipping hazard.", source: "", emoji: "⚠️" },
+  { id: 291, en: "Hazardous", ar: "خطير", example: "The factory stores hazardous materials safely.", source: "", emoji: "⚠️" },
+  { id: 292, en: "Toxic", ar: "سام", example: "The spill released toxic fumes.", source: "", emoji: "☠️" },
+  { id: 293, en: "Toxicity", ar: "السمية", example: "Scientists measured the toxicity of the chemical.", source: "", emoji: "☠️" },
+  { id: 294, en: "Exposure", ar: "تعرض", example: "Long exposure to the sun damages skin.", source: "", emoji: "🌡️" },
+  { id: 295, en: "Prolonged exposure", ar: "تعرض مطول", example: "Prolonged exposure to noise can harm hearing.", source: "", emoji: "🌡️" },
+  { id: 296, en: "Chronic", ar: "مزمن", example: "She suffers from chronic back pain.", source: "", emoji: "🩺" },
+  { id: 297, en: "Acute", ar: "حاد", example: "He was rushed in with acute chest pain.", source: "", emoji: "🚨" },
+  { id: 298, en: "Symptom", ar: "عرض", example: "Fever is a common symptom of flu.", source: "", emoji: "🤒" },
+  { id: 299, en: "Diagnosis", ar: "تشخيص", example: "The diagnosis confirmed a mild infection.", source: "", emoji: "🩺" },
+  { id: 300, en: "Diagnose", ar: "يشخّص", example: "Doctors ran tests to diagnose the illness.", source: "", emoji: "🩺" },
+];
+
+// Strip Arabic diacritics/tashkeel and unify common letter-shape variants
+function normalizeArabic(s) {
+  return s
+    .trim()
+    .replace(/[\u064B-\u0652\u0670\u0640]/g, "") // tashkeel (fatha, damma, kasra, sukun, shadda, tanween...) + tatweel
+    .replace(/[أإآٱ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Small edit-distance check to tolerate close spelling mistakes
+function editDistance(a, b) {
+  const dp = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i++) dp[i][0] = i;
+  for (let j = 0; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      dp[i][j] =
+        a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[a.length][b.length];
+}
+
+// Fallback local check used only if the AI call fails: forgiving of tashkeel,
+// close spelling variants, near-identical morphological forms, and partial
+// word-level overlap (roughly matches the "30% of the meaning" leniency)
+function fuzzyArabicMatch(referenceAr, userInput) {
+  const userNorm = normalizeArabic(userInput);
+  if (!userNorm) return false;
+  const alternatives = referenceAr.split("/").map((alt) => normalizeArabic(alt));
+
+  const wordOverlapScore = (alt, input) => {
+    const altWords = alt.split(/[\s،,]+/).filter(Boolean);
+    const inputWords = input.split(/[\s،,]+/).filter(Boolean);
+    if (altWords.length === 0 || inputWords.length === 0) return 0;
+    let hits = 0;
+    for (const iw of inputWords) {
+      for (const aw of altWords) {
+        if (iw === aw || iw.includes(aw) || aw.includes(iw)) {
+          hits++;
+          break;
+        }
+        const maxLen = Math.max(iw.length, aw.length);
+        if (maxLen >= 3 && editDistance(iw, aw) <= Math.max(1, Math.floor(maxLen * 0.3))) {
+          hits++;
+          break;
+        }
+      }
+    }
+    return hits / Math.max(altWords.length, inputWords.length);
+  };
+
+  return alternatives.some((alt) => {
+    if (alt === userNorm || alt.includes(userNorm) || userNorm.includes(alt)) return true;
+    const maxLen = Math.max(alt.length, userNorm.length);
+    const tolerance = maxLen <= 4 ? 1 : Math.max(1, Math.floor(maxLen * 0.3));
+    if (editDistance(alt, userNorm) <= tolerance) return true;
+    // Explanatory / multi-word answers: accept if roughly 30%+ of words overlap or are close matches
+    return wordOverlapScore(alt, userNorm) >= 0.3;
+  });
+}
+
+function StatusPill({ status }) {
+  if (!status) return null;
+  const isCorrect = status === "correct";
+  const color = isCorrect ? "#3F6B4A" : "#A6432D";
+  return (
+    <div
+      className="absolute top-3 left-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold"
+      style={{
+        backgroundColor: "#FFFFFF",
+        color,
+        border: `1px solid ${color}33`,
+        animation: "pillIn 220ms ease-out",
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: 9999, backgroundColor: color }} />
+      {isCorrect ? "صحيح" : "خطأ"}
+    </div>
+  );
+}
+
+const MASTERED_KEY = "vocab-mastered-ids";
+const MILESTONE_KEY = "vocab-milestone-reached";
+
+function VocabFlashcards() {
+  const [words, setWords] = useState(INITIAL_WORDS);
+  const [masteredIds, setMasteredIds] = useState([]);
+  const [currentId, setCurrentId] = useState(INITIAL_WORDS[0].id);
+  const [input, setInput] = useState("");
+  const [status, setStatus] = useState(null); // null | 'checking' | 'correct' | 'incorrect'
+  const [showAdd, setShowAdd] = useState(false);
+  const [newWord, setNewWord] = useState({ en: "", ar: "", example: "", source: "", emoji: "" });
+  const [apiError, setApiError] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [milestoneReached, setMilestoneReached] = useState(0);
+  const [toast, setToast] = useState(null);
+  const [view, setView] = useState("cards"); // 'cards' | 'progress'
+  const [emojiTiming, setEmojiTiming] = useState("before"); // 'before' | 'after'
+  const [hintRevealed, setHintRevealed] = useState(false);
+  const inputRef = useRef(null);
+
+  const remaining = useMemo(
+    () => words.filter((w) => !masteredIds.includes(w.id)),
+    [words, masteredIds]
+  );
+  const current = useMemo(
+    () => words.find((w) => w.id === currentId) || remaining[0],
+    [words, currentId, remaining]
+  );
+
+  useEffect(() => {
+    if (status === null) inputRef.current?.focus();
+  }, [status, currentId]);
+
+  // Reset the revealed-hint state whenever a new word comes up
+  useEffect(() => {
+    setHintRevealed(false);
+  }, [currentId]);
+
+  // Load saved progress from persistent storage on first mount
+  useEffect(() => {
+    (async () => {
+      let savedIds = [];
+      let savedMilestone = 0;
+      try {
+        const res = await window.storage.get(MASTERED_KEY, false);
+        if (res && res.value) savedIds = JSON.parse(res.value);
+      } catch (e) {
+        // no saved progress yet, start fresh
+      }
+      try {
+        const res2 = await window.storage.get(MILESTONE_KEY, false);
+        if (res2 && res2.value) savedMilestone = Number(res2.value) || 0;
+      } catch (e) {
+        // no saved milestone yet
+      }
+      if (savedIds.length) setMasteredIds(savedIds);
+      setMilestoneReached(savedMilestone);
+      setLoaded(true);
+    })();
+  }, []);
+
+  // Once progress loads, make sure the visible card isn't one already mastered
+  useEffect(() => {
+    if (!loaded) return;
+    const stillRemaining = words.filter((w) => !masteredIds.includes(w.id));
+    if (stillRemaining.length && !stillRemaining.find((w) => w.id === currentId)) {
+      setCurrentId(stillRemaining[Math.floor(Math.random() * stillRemaining.length)].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
+
+  // Persist mastered words whenever they change
+  useEffect(() => {
+    if (!loaded) return;
+    (async () => {
+      try {
+        await window.storage.set(MASTERED_KEY, JSON.stringify(masteredIds), false);
+      } catch (e) {
+        // storage unavailable, progress just won't persist
+      }
+    })();
+  }, [masteredIds, loaded]);
+
+  // Check for a new 10% milestone whenever mastered count changes
+  useEffect(() => {
+    if (!loaded || words.length === 0) return;
+    const percent = Math.floor((masteredIds.length / words.length) * 100);
+    const milestone = Math.floor(percent / 10) * 10;
+    if (milestone > milestoneReached && milestone > 0) {
+      setMilestoneReached(milestone);
+      setToast(`🎉 أتقنت ${milestone}% من الكلمات!`);
+      (async () => {
+        try {
+          await window.storage.set(MILESTONE_KEY, String(milestone), false);
+        } catch (e) {
+          // ignore
+        }
+      })();
+    }
+  }, [masteredIds, loaded, words.length, milestoneReached]);
+
+  // Auto-dismiss the milestone toast
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  function speakWord(text) {
+    try {
+      if (!window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const utterance = new window.SpeechSynthesisUtterance(text);
+      utterance.lang = "en-US";
+      utterance.rate = 0.9;
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      // speech synthesis unavailable, ignore silently
+    }
+  }
+
+  async function checkAnswer() {
+    if (!input.trim() || !current) return;
+    setStatus("checking");
+    setApiError(false);
+    let isCorrect = false;
+    const cleanInput = input.trim();
+    try {
+      const response = await fetch("/api/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          en: current.en,
+          ar: current.ar,
+          userInput: cleanInput,
+        }),
+      });
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(errBody.error || `Request failed with status ${response.status}`);
+      }
+      const data = await response.json();
+      isCorrect = data.correct === true;
+    } catch (err) {
+      setApiError(true);
+      isCorrect = fuzzyArabicMatch(current.ar, cleanInput);
+    }
+
+    if (isCorrect) {
+      setStatus("correct");
+    } else {
+      setStatus("incorrect");
+    }
+  }
+
+  function goNext() {
+    let nextMastered = masteredIds;
+    if (status === "correct" && current) {
+      nextMastered = [...masteredIds, current.id];
+      setMasteredIds(nextMastered);
+    }
+    const stillRemaining = words.filter((w) => !nextMastered.includes(w.id));
+    const next = stillRemaining.length
+      ? stillRemaining[Math.floor(Math.random() * stillRemaining.length)]
+      : null;
+    setCurrentId(next ? next.id : null);
+    setInput("");
+    setStatus(null);
+  }
+
+  async function resetDeck() {
+    setMasteredIds([]);
+    setMilestoneReached(0);
+    setInput("");
+    setStatus(null);
+    setToast(null);
+    setCurrentId(words[Math.floor(Math.random() * words.length)].id);
+    try {
+      await window.storage.set(MASTERED_KEY, JSON.stringify([]), false);
+      await window.storage.set(MILESTONE_KEY, "0", false);
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  function addWord(e) {
+    e.preventDefault();
+    if (!newWord.en.trim() || !newWord.ar.trim()) return;
+    const id = Date.now();
+    const w = {
+      id,
+      en: newWord.en.trim(),
+      ar: newWord.ar.trim(),
+      example: newWord.example.trim(),
+      source: newWord.source.trim(),
+      emoji: newWord.emoji.trim() || "💭",
+    };
+    setWords((prev) => [...prev, w]);
+    setNewWord({ en: "", ar: "", example: "", source: "", emoji: "" });
+    setShowAdd(false);
+  }
+
+  const total = words.length;
+  const masteredCount = masteredIds.length;
+  const stackDepth = Math.min(remaining.length, 5);
+  const done = remaining.length === 0;
+
+  return (
+    <div
+      className="min-h-screen w-full flex flex-col items-center px-4 pt-8 pb-24"
+      style={{ backgroundColor: "#F1ECE0", fontFamily: "'Tajawal', sans-serif" }}
+      dir="rtl"
+    >
+      <style>{`
+        @keyframes pillIn { 0% { transform: scale(0.7); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes cardShake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+        @keyframes toastIn { 0% { transform: translate(-50%, -16px); opacity: 0; } 100% { transform: translate(-50%, 0); opacity: 1; } }
+        @keyframes fadeUp { 0% { transform: translateY(6px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+        .shake { animation: cardShake 260ms; }
+        .fade-up { animation: fadeUp 250ms ease-out; }
+        input::placeholder { font-family: 'Tajawal', sans-serif; }
+      `}</style>
+
+      {/* Milestone toast */}
+      {toast && (
+        <div
+          className="fixed top-5 left-1/2 z-50 px-5 py-2.5 rounded-full text-sm font-bold shadow-lg"
+          style={{
+            backgroundColor: "#1C1B18",
+            color: "#F1ECE0",
+            animation: "toastIn 300ms cubic-bezier(0.2,0.9,0.3,1.2)",
+          }}
+        >
+          {toast}
+        </div>
+      )}
+
+      {/* Header */}
+      <header className="w-full max-w-md flex items-center justify-between mb-5">
+        <span
+          className="px-3 py-1.5 rounded-full text-xs font-bold tracking-wide"
+          style={{ backgroundColor: "#1C1B18", color: "#F1ECE0" }}
+        >
+          {masteredCount} / {total}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setEmojiTiming((t) => (t === "before" ? "after" : "before"))}
+            className="px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1"
+            style={{ backgroundColor: "#FFFFFF", color: "#1C1B18", border: "1px solid #DCD5C4" }}
+            title="متى يظهر الرمز التوضيحي"
+          >
+            💡 {emojiTiming === "before" ? "قبل الإجابة" : "بعد الإجابة"}
+          </button>
+          <button
+            onClick={() => setShowAdd((v) => !v)}
+            aria-label="إضافة كلمة"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-lg font-bold"
+            style={{ backgroundColor: "#FFFFFF", color: "#1C1B18", border: "1px solid #DCD5C4" }}
+          >
+            +
+          </button>
+        </div>
+      </header>
+
+      <h1
+        className="w-full max-w-md text-3xl mb-6"
+        style={{ color: "#1C1B18", fontFamily: "'Amiri', serif", fontWeight: 700 }}
+      >
+        بطاقات المفردات
+      </h1>
+
+      {/* Inline add-word panel */}
+      {showAdd && (
+        <form
+          onSubmit={addWord}
+          className="w-full max-w-md rounded-2xl p-4 space-y-2 mb-5 fade-up"
+          style={{ backgroundColor: "#FFFFFF", border: "1px solid #DCD5C4" }}
+        >
+          <input
+            value={newWord.en}
+            onChange={(e) => setNewWord({ ...newWord, en: e.target.value })}
+            placeholder="الكلمة بالإنجليزي"
+            dir="ltr"
+            className="w-full px-3.5 py-2.5 rounded-full text-sm outline-none"
+            style={{ backgroundColor: "#F1ECE0", color: "#1C1B18", border: "1px solid #DCD5C4" }}
+          />
+          <input
+            value={newWord.ar}
+            onChange={(e) => setNewWord({ ...newWord, ar: e.target.value })}
+            placeholder="المعنى بالعربي"
+            className="w-full px-3.5 py-2.5 rounded-full text-sm outline-none"
+            style={{ backgroundColor: "#F1ECE0", color: "#1C1B18", border: "1px solid #DCD5C4" }}
+          />
+          <input
+            value={newWord.example}
+            onChange={(e) => setNewWord({ ...newWord, example: e.target.value })}
+            placeholder="جملة مثال (اختياري)"
+            dir="ltr"
+            className="w-full px-3.5 py-2.5 rounded-full text-sm outline-none"
+            style={{ backgroundColor: "#F1ECE0", color: "#1C1B18", border: "1px solid #DCD5C4" }}
+          />
+          <input
+            value={newWord.emoji}
+            onChange={(e) => setNewWord({ ...newWord, emoji: e.target.value })}
+            placeholder="رمز/إيموجي يوضّح المعنى (اختياري) مثال: 🦉"
+            className="w-full px-3.5 py-2.5 rounded-full text-sm outline-none"
+            style={{ backgroundColor: "#F1ECE0", color: "#1C1B18", border: "1px solid #DCD5C4" }}
+          />
+          <div className="flex gap-2 pt-1">
+            <button
+              type="submit"
+              className="flex-1 py-2.5 rounded-full font-bold text-sm"
+              style={{ backgroundColor: "#1C1B18", color: "#F1ECE0" }}
+            >
+              إضافة
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAdd(false)}
+              className="flex-1 py-2.5 rounded-full font-bold text-sm"
+              style={{ backgroundColor: "#F1ECE0", color: "#1C1B18", border: "1px solid #DCD5C4" }}
+            >
+              إلغاء
+            </button>
+          </div>
+        </form>
+      )}
+
+      {view === "progress" ? (
+        <div className="w-full max-w-md rounded-2xl p-6 fade-up" style={{ backgroundColor: "#FFFFFF", border: "1px solid #DCD5C4" }}>
+          <p className="text-5xl mb-1" style={{ fontFamily: "'Playfair Display', serif", color: "#1C1B18", fontWeight: 700 }}>
+            {Math.round((masteredCount / total) * 100)}%
+          </p>
+          <p className="text-sm mb-5" style={{ color: "#7A7468" }}>
+            {masteredCount} من {total} كلمة محفوظة
+          </p>
+          <div className="w-full h-2 rounded-full mb-6 overflow-hidden" style={{ backgroundColor: "#EDE7D9" }}>
+            <div
+              className="h-full rounded-full"
+              style={{ width: `${(masteredCount / total) * 100}%`, backgroundColor: "#1C1B18", transition: "width 400ms ease" }}
+            />
+          </div>
+          <div className="flex flex-wrap gap-2 mb-6">
+            {[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((m) => (
+              <span
+                key={m}
+                className="px-2.5 py-1 rounded-full text-xs font-bold"
+                style={
+                  milestoneReached >= m
+                    ? { backgroundColor: "#1C1B18", color: "#F1ECE0" }
+                    : { backgroundColor: "#FFFFFF", color: "#B4AC9C", border: "1px solid #DCD5C4" }
+                }
+              >
+                {m}%
+              </span>
+            ))}
+          </div>
+          <button
+            onClick={resetDeck}
+            className="w-full py-3 rounded-full font-bold text-sm"
+            style={{ backgroundColor: "#F1ECE0", color: "#A6432D", border: "1px solid #DCD5C4" }}
+          >
+            إعادة تعيين الكل
+          </button>
+        </div>
+      ) : (
+        <div className="relative w-full max-w-md" style={{ minHeight: "24rem" }}>
+          {/* stacked cards behind, representing remaining words */}
+          {Array.from({ length: stackDepth }).map((_, i) => (
+            <div
+              key={i}
+              className="absolute inset-0 rounded-2xl"
+              style={{
+                backgroundColor: "#E7E0D0",
+                border: "1px solid #DCD5C4",
+                transform: `translateY(${(stackDepth - i) * 3}px) translateX(${(stackDepth - i) * 2}px) rotate(${(stackDepth - i) * -0.8}deg)`,
+                zIndex: i,
+              }}
+            />
+          ))}
+
+          {!loaded ? (
+            <div
+              className="relative rounded-2xl flex items-center justify-center"
+              style={{ backgroundColor: "#FFFFFF", border: "1px solid #DCD5C4", minHeight: "24rem", zIndex: 10 }}
+            >
+              <p className="text-sm font-bold" style={{ color: "#B4AC9C" }}>
+                جارٍ تحميل تقدمك المحفوظ...
+              </p>
+            </div>
+          ) : done ? (
+            <div
+              className="relative rounded-2xl p-8 flex flex-col items-center justify-center text-center"
+              style={{ backgroundColor: "#FFFFFF", border: "1px solid #DCD5C4", minHeight: "24rem", zIndex: 10 }}
+            >
+              <div className="text-5xl mb-4">🏆</div>
+              <h2 className="text-2xl mb-2" style={{ color: "#1C1B18", fontFamily: "'Amiri', serif", fontWeight: 700 }}>
+                أتقنت كل الكلمات!
+              </h2>
+              <p className="text-sm mb-6" style={{ color: "#7A7468" }}>
+                حفظت {total} كلمة بنجاح
+              </p>
+              <button
+                onClick={resetDeck}
+                className="px-6 py-3 rounded-full font-bold text-sm"
+                style={{ backgroundColor: "#1C1B18", color: "#F1ECE0" }}
+              >
+                ابدأ من جديد
+              </button>
+            </div>
+          ) : current ? (
+            <div
+              className={`relative rounded-2xl overflow-hidden flex flex-col ${status === "incorrect" ? "shake" : ""}`}
+              style={{ backgroundColor: "#FFFFFF", border: "1px solid #DCD5C4", minHeight: "24rem", zIndex: 10, boxShadow: "0 10px 24px rgba(28,27,24,0.08)" }}
+            >
+              {/* Decorative illustration banner */}
+              <div
+                className="relative w-full flex flex-col items-center justify-center overflow-hidden gap-1"
+                style={{ height: "108px", background: "linear-gradient(135deg, #E7DCC3 0%, #F1ECE0 100%)" }}
+              >
+                {(() => {
+                  const answered = status === "correct" || status === "incorrect";
+                  const showEmoji = emojiTiming === "before" || answered || hintRevealed;
+                  if (showEmoji) {
+                    return (
+                      <span style={{ fontSize: "3.25rem", lineHeight: 1 }} role="img" aria-label={current.en}>
+                        {current.emoji || "💭"}
+                      </span>
+                    );
+                  }
+                  return (
+                    <>
+                      <span style={{ fontSize: "2.25rem", lineHeight: 1, opacity: 0.35 }}>❔</span>
+                      <button
+                        onClick={() => setHintRevealed(true)}
+                        className="text-xs font-bold px-2.5 py-1 rounded-full"
+                        style={{ backgroundColor: "#1C1B18", color: "#F1ECE0" }}
+                      >
+                        💡 إظهار تلميح
+                      </button>
+                    </>
+                  );
+                })()}
+                <span
+                  className="absolute top-3 right-3 text-xs font-bold px-2.5 py-1 rounded-full"
+                  style={{ backgroundColor: "#1C1B18", color: "#F1ECE0" }}
+                >
+                  EN → AR
+                </span>
+                <StatusPill status={status === "correct" || status === "incorrect" ? status : null} />
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 flex flex-col px-6 py-6">
+                <div className="flex-1 flex flex-col items-center justify-center" dir="ltr">
+                  <div className="flex items-center gap-2">
+                    <p
+                      className="text-4xl text-center"
+                      style={{ color: "#1C1B18", fontFamily: "'Playfair Display', serif", fontWeight: 600 }}
+                    >
+                      {current.en}
+                    </p>
+                    <button
+                      onClick={() => speakWord(current.en)}
+                      aria-label="استمع للكلمة"
+                      title="استمع"
+                      className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: "#F1ECE0", border: "1px solid #DCD5C4", color: "#1C1B18" }}
+                    >
+                      🔊
+                    </button>
+                  </div>
+                  {current.example && (
+                    <p
+                      className="text-xs text-center mt-2 px-2"
+                      style={{ color: "#B4AC9C", fontStyle: "italic" }}
+                    >
+                      "{current.example}"
+                    </p>
+                  )}
+                </div>
+
+                {/* Meaning, revealed after answering */}
+                {status && (status === "correct" || status === "incorrect") && (
+                  <div className="mt-2 mb-4 text-center fade-up">
+                    <p
+                      className="text-lg mt-2"
+                      style={{
+                        color: status === "correct" ? "#3F6B4A" : "#A6432D",
+                        fontFamily: "'Amiri', serif",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {current.ar}
+                    </p>
+                  </div>
+                )}
+
+                {/* Input / actions */}
+                {!status || status === "checking" ? (
+                  <div className="flex items-center gap-2 mt-2 rounded-full px-2 py-1.5" style={{ backgroundColor: "#F1ECE0", border: "1px solid #DCD5C4" }}>
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && checkAnswer()}
+                      disabled={status === "checking"}
+                      placeholder="اكتب المعنى بالعربي..."
+                      className="flex-1 bg-transparent px-2 py-1.5 text-sm outline-none"
+                      style={{ color: "#1C1B18" }}
+                    />
+                    <button
+                      onClick={checkAnswer}
+                      disabled={status === "checking" || !input.trim()}
+                      className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold disabled:opacity-40 flex-shrink-0"
+                      style={{ backgroundColor: "#1C1B18", color: "#F1ECE0" }}
+                    >
+                      {status === "checking" ? "…" : "✓"}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={goNext}
+                    className="mt-2 w-full py-3 rounded-full font-bold text-sm"
+                    style={{ backgroundColor: "#1C1B18", color: "#F1ECE0" }}
+                  >
+                    التالية ←
+                  </button>
+                )}
+
+                {apiError && status === "incorrect" && (
+                  <p className="text-xs mt-2 text-center" style={{ color: "#B4AC9C" }}>
+                    تم التحقق محلياً بسبب تعذر الاتصال بالذكاء الاصطناعي
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {/* Bottom nav */}
+      <nav
+        className="fixed bottom-0 left-0 right-0 flex items-center justify-center gap-10 py-4 z-40"
+        style={{ backgroundColor: "#F8F5EC", borderTop: "1px solid #DCD5C4" }}
+      >
+        <button
+          onClick={() => setView("cards")}
+          className="text-sm font-bold"
+          style={
+            view === "cards"
+              ? { color: "#1C1B18", textDecoration: "underline", textUnderlineOffset: "6px" }
+              : { color: "#B4AC9C" }
+          }
+        >
+          بطاقات
+        </button>
+        <button
+          onClick={() => setView("progress")}
+          className="text-sm font-bold"
+          style={
+            view === "progress"
+              ? { color: "#1C1B18", textDecoration: "underline", textUnderlineOffset: "6px" }
+              : { color: "#B4AC9C" }
+          }
+        >
+          التقدّم
+        </button>
+      </nav>
+    </div>
+  );
+}
+
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(React.createElement(VocabFlashcards));
+  </script>
+
+  <!-- Manually transform with the classic JSX runtime (React.createElement calls),
+       since the automatic runtime emits an ES "import" for react/jsx-runtime which
+       doesn't exist as a global when React is loaded via a plain <script> tag -->
+  <script>
+    (function () {
+      const src = document.getElementById("app-source").textContent;
+      const compiled = Babel.transform(src, {
+        presets: [["react", { runtime: "classic" }], "env"],
+      }).code;
+      const scriptEl = document.createElement("script");
+      scriptEl.textContent = compiled;
+      document.body.appendChild(scriptEl);
+    })();
+  </script>
+</body>
+</html>
